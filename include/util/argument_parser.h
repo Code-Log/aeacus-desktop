@@ -8,6 +8,8 @@
 #include <string>
 
 class ArgumentParser {
+private:
+
 public:
     virtual void registerArgument(Argument arg) = 0;
     virtual std::unordered_map<std::string, std::string> parse(int argc, const char** argv) = 0;
