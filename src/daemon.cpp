@@ -2,12 +2,15 @@
 #include <util/timer.h>
 #include <user.h>
 #include <event/listener.h>
-#include "event/command_event.h"
+#include <event/command_event.h>
 #include <iostream>
+#include <csignal>
+#include <glog/logging.h>
 
 namespace aeacus
 {
     bool Daemon::s_Lock;
+    Daemon* Daemon::s_Daemon = nullptr;
 
     Daemon::Daemon(long pollingDelay)
         : m_Delay(pollingDelay), m_Timer(nullptr), m_Running(false)
@@ -20,19 +23,34 @@ namespace aeacus
 
     void Daemon::event(const MessageEvent& event) const
     {
+        event.handle();
     }
 
     void Daemon::start()
     {
+        s_Daemon = this;
         m_Running = true;
         m_Timer = new Timer([&]() {
-            std::vector<Message> messages = UserContext::get().getUser().getNewMessages();
+            if (UserContext::get().getUser() == nullptr) {
+                LOG(ERROR) << "No logged in user!" << std::endl;
+                stop();
+                return;
+            }
+
+            std::vector<Message> messages = UserContext::get().getUser()->getNewMessages();
             if (!messages.empty())
             {
                 for (const Message& msg : messages)
                     ListenerContext::get().event(CommandEvent(msg));
             }
         }, m_Delay, true);
+
+        signal(SIGINT, [](int signum) {
+            if (Daemon::s_Daemon != nullptr)
+                Daemon::s_Daemon->stop();
+        });
+
+        signal(SIGTERM, [](int signum) { raise(SIGINT); });
     }
 
     void Daemon::stop()
@@ -65,5 +83,10 @@ namespace aeacus
     const char* DuplicateDaemonException::what() const noexcept
     {
         return m_Message;
+    }
+
+    void Daemon::wait()
+    {
+        m_Timer->waitForCancel();
     }
 }

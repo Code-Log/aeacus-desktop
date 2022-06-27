@@ -13,8 +13,18 @@ namespace aeacus
         long timestamp;
         int target;
 
-        [[nodiscard]] nlohmann::json serialize() const;
+        virtual ~MessagePayload();
+
+        [[nodiscard]] virtual nlohmann::json serialize() const = 0;
         static MessagePayload* fromJSON(nlohmann::json json);
+    };
+
+    struct CommandPayload : public MessagePayload
+    {
+        std::string command;
+
+        [[nodiscard]] nlohmann::json serialize() const override;
+        static CommandPayload* fromJSON(nlohmann::json json);
     };
 
     struct Message

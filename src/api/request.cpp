@@ -51,7 +51,7 @@ namespace aeacus
 
         json response = req.getResponse();
 
-//        std::cout << response << std::endl;
+//        LOG(INFO) << response << std::endl;
 
         if (!response.contains("status"))
         {

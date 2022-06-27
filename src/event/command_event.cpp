@@ -1,4 +1,6 @@
 #include <event/command_event.h>
+#include <iostream>
+#include <glog/logging.h>
 
 namespace aeacus
 {
@@ -7,11 +9,18 @@ namespace aeacus
         m_Message = message;
     }
 
-    void CommandEvent::handle()
+    void CommandEvent::handle() const
     {
+        auto* payload = reinterpret_cast<CommandPayload*>(m_Message.payload);
+        if (payload->command == "shutdown")
+        {
+            LOG(INFO) << "Received shutdown command!" << std::endl;
+            LOG(INFO).flush();
+            std::system("shutdown now");
+        }
     }
 
-    Message &CommandEvent::getMessage()
+    const Message& CommandEvent::getMessage() const
     {
         return m_Message;
     }

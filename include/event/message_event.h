@@ -13,8 +13,8 @@ namespace aeacus
     protected:
         Message m_Message;
     public:
-        virtual void handle() = 0;
-        virtual Message& getMessage() = 0;
+        virtual void handle() const = 0;
+        [[nodiscard]] virtual const Message& getMessage() const = 0;
         friend std::ostream& operator<<(std::ostream& stream, const MessageEvent& event);
     };
 }

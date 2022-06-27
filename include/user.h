@@ -23,12 +23,15 @@ namespace aeacus
         User(std::string username, std::string publicKey, std::string secretKey, std::string vaultKey);
     public:
         static User* create(const std::string& username, const std::string& password);
+        static User* fromJSON(nlohmann::json json);
 
         [[nodiscard]] std::vector<Message> getNewMessages();
 
         [[nodiscard]] const std::string& getUsername() const;
         [[nodiscard]] const std::string& getKey() const;
         [[nodiscard]] Token getToken() const;
+
+        nlohmann::json serialize() const;
     };
 
     class UserContext
@@ -36,6 +39,7 @@ namespace aeacus
     private:
         User* m_User;
         UserContext(const std::string& username, const std::string& password);
+        UserContext(User* user);
         static UserContext* s_Instance;
 
     public:
@@ -45,7 +49,10 @@ namespace aeacus
         static void create(const std::string& username, const std::string& password);
         static void destroy();
 
-        User& getUser();
+        User* getUser();
+
+        void save() const;
+        static bool recall();
     };
 }
 

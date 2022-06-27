@@ -1,10 +1,11 @@
 #include <api/command.h>
 #include <iostream>
+#include <glog/logging.h>
 
 namespace aeacus
 {
     void ShutdownCommand::execute()
     {
-        std::cout << "Shutdown command received!" << std::endl;
+        LOG(INFO) << "Shutdown command received!" << std::endl;
     }
 }

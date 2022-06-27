@@ -24,6 +24,7 @@ namespace aeacus
 
         void cancel();
         bool isCancelled() const;
+        void waitForCancel();
     };
 }
 

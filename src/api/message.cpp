@@ -34,12 +34,14 @@ namespace aeacus
 
     MessagePayload* MessagePayload::fromJSON(nlohmann::json json)
     {
-        auto* payload = new MessagePayload();
-        payload->timestamp = json["timestamp"];
-        payload->target = json["target"];
-        payload->type = json["type"];
+        if (json["type"] == "command")
+            return CommandPayload::fromJSON(json);
 
-        return payload;
+        return nullptr;
+    }
+
+    MessagePayload::~MessagePayload()
+    {
     }
 
     Message::~Message()
@@ -61,21 +63,47 @@ namespace aeacus
     Message::Message(const Message &other)
         : m_Sig(other.m_Sig), m_User(other.m_User)
     {
-        payload = new MessagePayload();
+        payload = new CommandPayload();
         payload->timestamp = other.payload->timestamp;
         payload->type = other.payload->type;
         payload->target = other.payload->target;
+        ((CommandPayload*)payload)->command = ((CommandPayload*)other.payload)->command;
     }
 
     Message& Message::operator=(const Message &other)
     {
         m_Sig = other.m_Sig;
         m_User = other.m_User;
-        payload = new MessagePayload();
+        payload = new CommandPayload();
         payload->timestamp = other.payload->timestamp;
         payload->type = other.payload->type;
         payload->target = other.payload->target;
+        ((CommandPayload*)payload)->command = ((CommandPayload*)other.payload)->command;
 
         return *this;
+    }
+
+    nlohmann::json CommandPayload::serialize() const
+    {
+        using namespace nlohmann;
+        json result;
+
+        result["command"] = command;
+        result["type"] = type;
+        result["timestamp"] = timestamp;
+        result["target"] = target;
+
+        return result;
+    }
+
+    CommandPayload* CommandPayload::fromJSON(nlohmann::json json)
+    {
+        auto* payload = new CommandPayload();
+        payload->timestamp = json["timestamp"];
+        payload->target = json["target"];
+        payload->type = json["type"];
+        payload->command = json["command"];
+
+        return payload;
     }
 }

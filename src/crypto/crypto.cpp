@@ -6,45 +6,55 @@
 #include <openssl/sha.h>
 #include <cstring>
 #include <openssl/pem.h>
+#include <openssl/hmac.h>
+#include <iostream>
+#include <glog/logging.h>
 
 namespace aeacus
 {
-    void sha256Digest(const std::string& msg, unsigned char* digest) {
+    void sha256Digest(const std::string& msg, unsigned char* digest)
+    {
         auto* sha = new SHA256_CTX;
         SHA256_Init(sha);
         SHA256_Update(sha, msg.c_str(), msg.size());
 
         SHA256_Final(digest, sha);
+
+        delete sha;
     }
 
     bool verifySignature(const std::string& msg, const std::string& signature, const std::string& keyStr)
     {
-        RSA* rsa = nullptr;
+        RSA* rsa;
         BIO* mem;
 
         mem = BIO_new_mem_buf(keyStr.c_str(), -1);
-        PEM_read_bio_RSA_PUBKEY(mem, &rsa, nullptr, nullptr);
+        rsa = PEM_read_bio_RSA_PUBKEY(mem, nullptr, nullptr, nullptr);
 
         auto* digest = new unsigned char[SHA256_DIGEST_LENGTH];
         sha256Digest(msg, digest);
 
         auto sigBuf = new unsigned char[signature.size()];
-        auto sigBufLen = 0;
+        size_t sigBufLen = 0;
         sodium_hex2bin(reinterpret_cast<unsigned char* const>(sigBuf), signature.size() / 2,
-                       signature.c_str(), signature.size(), nullptr, reinterpret_cast<size_t* const>(&sigBufLen), nullptr);
+                       signature.c_str(), signature.size(), nullptr, &sigBufLen, nullptr);
 
         auto result = RSA_verify(NID_sha256, digest, SHA256_DIGEST_LENGTH,
                                  sigBuf, sigBufLen, rsa);
 
+//        int result = 1;
+
         RSA_free(rsa);
         BIO_free(mem);
-        delete[] sigBuf;
-        delete[] digest;
+
+        secureFree(sigBuf, (int)sigBufLen);
+        secureFree(digest, SHA256_DIGEST_LENGTH);
 
         return result == 1;
     }
 
-    int password_cb(char* buf, int size, int rwflag, void* u) {
+    int password_cb(char* buf, int size, int rwflag, void* u)
+    {
         const char* password = (const char*)u;
         int sizeToWrite = (size < std::strlen(password)) ? size : std::strlen(password);
         std::memcpy(buf, password, sizeToWrite);
@@ -57,8 +67,7 @@ namespace aeacus
         BIO* mem;
 
         mem = BIO_new_mem_buf(keyStr.c_str(), -1);
-
-        PEM_read_bio_RSAPrivateKey(mem, &rsa, &password_cb, (void*)password);
+        rsa = PEM_read_bio_RSAPrivateKey(mem, nullptr, &password_cb, (void*)password);
 
         unsigned int siglen = RSA_size(rsa);
         auto* sigBuf = new unsigned char[siglen];
@@ -78,9 +87,9 @@ namespace aeacus
 
         std::string sigString(hex);
 
-        delete[] digest;
-        delete[] hex;
-        delete[] sigBuf;
+        secureFree(digest, SHA256_DIGEST_LENGTH);
+        secureFree(hex, (int)hex_maxlen);
+        secureFree(sigBuf, (int)siglen);
 
         RSA_free(rsa);
         BIO_free(mem);
@@ -94,13 +103,17 @@ namespace aeacus
 
         auto* resultBytes = new unsigned char[keyLen];
         PKCS5_PBKDF2_HMAC(
-            password.c_str(), password.size(),
+            password.c_str(), (int)password.size(),
             reinterpret_cast<const unsigned char*>(salt_decoded.c_str()),
-            salt_decoded.size(), 64000, EVP_sha256(),
-            keyLen, resultBytes
+            (int)salt_decoded.size(), 310000, EVP_sha256(),
+            (int)keyLen, resultBytes
         );
 
-        return base64_encode(resultBytes, keyLen);
+        std::string result = base64_encode(resultBytes, keyLen);
+
+        secureFree(resultBytes, (int)keyLen);
+
+        return result;
     }
 
     Token generateToken(const std::string& keyStr, const std::string& vaultKey)
@@ -115,5 +128,53 @@ namespace aeacus
         std::string sig = sign(token, keyStr, vaultKey.c_str());
 
         return { token, sig };
+    }
+
+    /**
+     * Securely deletes a block of heap memory by settings every byte
+     * to 0x00 before calling delete[] on the pointer.
+     * @param ptr The block of memory to be deleted
+     * @param size The size of the data at the pointer in bytes
+     */
+    void secureFree(void* ptr, size_t size)
+    {
+        auto* p = reinterpret_cast<unsigned char*>(ptr);
+
+        for (int i = 0; i < size; i++)
+            p[i] = 0x00;
+
+        delete[] p;
+    }
+
+    std::string hmacSha256(const std::string& secret, const std::string& msg)
+    {
+        std::string key = base64_decode(secret);
+
+        void* keyBuf = new char[key.size()];
+        int keyLen = (int)key.size();
+        std::memcpy(keyBuf, key.c_str(), keyLen);
+
+        unsigned char md[SHA256_DIGEST_LENGTH];
+        unsigned int mdLen = 0;
+        if (!HMAC(
+            EVP_sha256(),
+            keyBuf,
+            keyLen,
+            reinterpret_cast<const unsigned char*>(msg.c_str()),
+            msg.size(),
+            md,
+            &mdLen
+        ))
+        {
+            LOG(ERROR) << "An error occurred while calculating an HMAC!" << std::endl;
+            return "";
+        }
+
+        char hex[SHA256_DIGEST_LENGTH * 2 + 1];
+        sodium_bin2hex(hex, SHA256_DIGEST_LENGTH * 2 + 1, md, mdLen);
+
+        secureFree(keyBuf, keyLen);
+
+        return hex;
     }
 }

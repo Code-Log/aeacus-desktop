@@ -28,6 +28,8 @@ namespace aeacus
         static bool s_Lock;
 
     public:
+        static Daemon* s_Daemon;
+
         explicit Daemon(long pollingDelay);
         ~Daemon();
 
@@ -35,6 +37,7 @@ namespace aeacus
         void stop();
         [[nodiscard]] bool isRunning() const;
         void event(const MessageEvent& event) const override;
+        void wait();
     };
 }
 

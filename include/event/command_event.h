@@ -13,8 +13,8 @@ namespace aeacus
     public:
         explicit CommandEvent(const Message& message);
 
-        void handle() override;
-        Message& getMessage() override;
+        void handle() const override;
+        const Message& getMessage() const override;
     };
 }
 

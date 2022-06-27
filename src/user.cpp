@@ -4,6 +4,11 @@
 #include <nlohmann/json.hpp>
 #include <api/request.h>
 #include <crypto/crypto.h>
+#include <csignal>
+#include <pwd.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <glog/logging.h>
 
 namespace aeacus
 {
@@ -31,13 +36,18 @@ namespace aeacus
         req->setParam("authKey", authKey);
 
         response = req->send(nullptr, nullptr);
-        std::cout << response << std::endl;
-
         std::string publicKey = response["user"]["publicKey"];
         std::string secretKey = response["user"]["secretKey"];
 
+        std::string expectedHmac = response["user"]["hmac"];
+        std::string hmac = hmacSha256(vaultKey, publicKey + secretKey + salt);
+
+        if (hmac != expectedHmac)
+            LOG(ERROR) << "User HMAC verification failure. Someone may be messing with our stuff!" << std::endl;
+
         auto* result = new User(username, publicKey, secretKey, vaultKey);
 
+        delete req;
         return result;
     }
 
@@ -54,8 +64,9 @@ namespace aeacus
     Token User::getToken() const
     {
         Token t = generateToken(m_SecretKey, m_VaultKey);
-        if (!verifySignature(t.token, t.signature, m_PublicKey))
-            std::cerr << "Generated an invalid token!" << std::endl;
+        bool valid = verifySignature(t.token, t.signature, m_PublicKey);
+        if (!valid)
+            LOG(ERROR) << "Generated an invalid token!" << std::endl;
         return t;
     }
 
@@ -64,7 +75,17 @@ namespace aeacus
         using namespace nlohmann;
         auto* req = new APIRequest("getNewMessages", true);
         auto token = getToken();
-        auto response = req->send(&m_Username, &token);
+        json response;
+        try
+        {
+            response = req->send(&m_Username, &token);
+        } catch (APIException& e)
+        {
+            LOG(ERROR) << "API Exception!" << std::endl;
+            LOG(ERROR) << '\t' << e.what() << std::endl;
+            return {};
+        }
+
         std::vector<Message> result = {};
 
         m_LastAck = response["messagePackage"]["lastAcknowledgedTimestamp"];
@@ -100,9 +121,9 @@ namespace aeacus
                 {
                     bad.push_back(result[i].payload->timestamp);
                     if (!validSignature)
-                        std::cout << "Invalid signature for timestamp " << result[i].payload->timestamp << std::endl;
+                        LOG(INFO) << "Invalid signature for timestamp " << result[i].payload->timestamp << std::endl;
                     else
-                        std::cout << "Bad timestamp. Last ack: " << m_LastAck <<
+                        LOG(INFO) << "Bad timestamp. Last ack: " << m_LastAck <<
                             ". We got " << result[i].payload->timestamp << std::endl;
 
                     result.erase(result.begin() + i);
@@ -114,11 +135,41 @@ namespace aeacus
             req = new APIRequest("acknowledgeMessages", true);
             req->setParam("timestamps", toAck);
             req->setParam("bad", bad); // Specify which messages are bad and should be discarded
-            req->send(&m_Username, &token);
+
+            try
+            {
+                req->send(&m_Username, &token);
+            } catch (APIException& e)
+            {
+                LOG(ERROR) << "API Exception!" << std::endl;
+                LOG(ERROR) << '\t' << e.what() << std::endl;
+            }
 
             delete req;
             return std::move(result);
         }
+    }
+
+    User* User::fromJSON(nlohmann::json json)
+    {
+        std::string username = json["username"];
+        std::string publicKey = json["publicKey"];
+        std::string secretKey = json["secretKey"];
+        std::string vaultKey = json["vaultKey"];
+        return new User(username, publicKey, secretKey, vaultKey);
+    }
+
+    nlohmann::json User::serialize() const
+    {
+        using namespace nlohmann;
+        json result;
+
+        result["username"] = m_Username;
+        result["publicKey"] = m_PublicKey;
+        result["secretKey"] = m_SecretKey;
+        result["vaultKey"] = m_VaultKey;
+
+        return result;
     }
 
     UserContext* UserContext::s_Instance;
@@ -143,13 +194,87 @@ namespace aeacus
         delete s_Instance;
     }
 
-    User &UserContext::getUser()
+    User* UserContext::getUser()
     {
-        return *m_User;
+        return m_User;
     }
 
     UserContext::~UserContext()
     {
         delete m_User;
+    }
+
+    void UserContext::save() const
+    {
+        LOG(INFO) << "Saving user context..." << std::endl;
+        LOG(INFO) << "Fetching local username..." << std::endl;
+        uid_t uid = geteuid();
+        passwd* pw = getpwuid(uid);
+        std::string sysUsername = pw->pw_name;
+
+        LOG(INFO) << "whoami: " << sysUsername << std::endl;
+
+        std::string path = "/home/" + sysUsername + "/.aeacus";
+        if (!std::filesystem::exists(path))
+        {
+            LOG(INFO) << "Credentials directory doesn't exist. Creating..." << std::endl;
+            std::filesystem::create_directories(path);
+            chmod(path.c_str(), 0700);
+        }
+
+        path += "/user.json";
+
+        LOG(INFO) << "Dumping user to " << path << "..." << std::endl;
+        std::ofstream fs(path);
+        fs << m_User->serialize().dump();
+        fs.close();
+
+        LOG(INFO) << "Userdump successful" << std::endl;
+        chmod(path.c_str(), 0600);
+    }
+
+    bool UserContext::recall()
+    {
+        LOG(INFO) << "Recalling user context..." << std::endl;
+        LOG(INFO) << "Fetching local username..." << std::endl;
+
+        uid_t uid = geteuid();
+        passwd* pw = getpwuid(uid);
+        std::string sysUsername = pw->pw_name;
+
+        LOG(INFO) << "whoami: " << sysUsername << std::endl;
+
+        std::string path = "/home/" + sysUsername + "/.aeacus/user.json";
+        if (!std::filesystem::exists(path))
+        {
+            LOG(ERROR) << "Couldn't find user credentials!" << std::endl;
+            return false;
+        }
+
+        LOG(INFO) << "User credentials path: " << path << std::endl;
+
+        std::ifstream fs(path);
+        std::stringstream stream;
+        stream << fs.rdbuf();
+        std::string contents = stream.str();
+
+        using namespace nlohmann;
+        try
+        {
+            json userJSON = json::parse(contents);
+            s_Instance = new UserContext(User::fromJSON(userJSON));
+            LOG(INFO) << "Recall finished" << std::endl;
+            return true;
+        }
+        catch (std::exception& e) {
+            LOG(ERROR) << "Couldn't parse credentials!" << std::endl;
+            LOG(ERROR) << e.what() << std::endl;
+            return false;
+        }
+    }
+
+    UserContext::UserContext(User* user)
+    {
+        m_User = user;
     }
 }

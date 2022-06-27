@@ -2,6 +2,8 @@
 #include <curl/curl.h>
 #include <utility>
 #include <sstream>
+#include <iostream>
+#include <glog/logging.h>
 
 namespace aeacus
 {
@@ -32,6 +34,7 @@ namespace aeacus
         data[dataLength - 1] = 0;
 
         reinterpret_cast<HttpRequest*>(userp)->chunks.emplace_back(data);
+        delete[] data;
         return nmemb;
     }
 
@@ -51,6 +54,8 @@ namespace aeacus
         curl_easy_setopt(handle, CURLOPT_WRITEDATA, (void*)this);
 
         int status = curl_easy_perform(handle);
+        curl_easy_cleanup(handle);
+        curl_slist_free_all(headers);
         if (status != 0)
             throw HttpRequestException("The requested URL returned an error code!");
 
@@ -58,7 +63,13 @@ namespace aeacus
         for (const std::string& str : chunks)
             jsonStr += str;
 
-        m_Response = nlohmann::json::parse(jsonStr);
+        try
+        {
+            m_Response = nlohmann::json::parse(jsonStr);
+        } catch (nlohmann::json::parse_error& e)
+        {
+            LOG(ERROR) << "Received malformed JSON!" << std::endl;
+        }
     }
 
     nlohmann::json HttpRequest::getResponse() const
