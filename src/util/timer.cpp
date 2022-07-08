@@ -11,7 +11,7 @@ namespace aeacus
         using namespace std::chrono;
         m_StartTime = high_resolution_clock::now();
         m_Callback = std::move(callback);
-        m_Function = [=]() {
+        m_Function = [&]() {
             while (!m_Cancelled)
             {
                 std::this_thread::sleep_for(milliseconds(m_Duration));

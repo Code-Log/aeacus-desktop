@@ -1,18 +1,18 @@
-#include <daemon.h>
-#include <util/timer.h>
-#include <user.h>
-#include <event/listener.h>
-#include <event/command_event.h>
+#include "daemon/daemon.h"
+#include "util/timer.h"
+#include "user.h"
+#include "event/listener.h"
+#include "event/command_event.h"
 #include <iostream>
 #include <csignal>
 #include <glog/logging.h>
 
 namespace aeacus
 {
-    bool Daemon::s_Lock;
-    Daemon* Daemon::s_Daemon = nullptr;
+    bool PollingDaemon::s_Lock;
+    PollingDaemon* PollingDaemon::s_Daemon = nullptr;
 
-    Daemon::Daemon(long pollingDelay)
+    PollingDaemon::PollingDaemon(long pollingDelay)
         : m_Delay(pollingDelay), m_Timer(nullptr), m_Running(false)
     {
         if (!s_Lock)
@@ -21,12 +21,12 @@ namespace aeacus
             throw DuplicateDaemonException();
     }
 
-    void Daemon::event(const MessageEvent& event) const
+    void PollingDaemon::event(const MessageEvent& event) const
     {
         event.handle();
     }
 
-    void Daemon::start()
+    void PollingDaemon::start()
     {
         s_Daemon = this;
         m_Running = true;
@@ -46,26 +46,26 @@ namespace aeacus
         }, m_Delay, true);
 
         signal(SIGINT, [](int signum) {
-            if (Daemon::s_Daemon != nullptr)
-                Daemon::s_Daemon->stop();
+            if (PollingDaemon::s_Daemon != nullptr)
+                PollingDaemon::s_Daemon->stop();
         });
 
         signal(SIGTERM, [](int signum) { raise(SIGINT); });
     }
 
-    void Daemon::stop()
+    void PollingDaemon::stop()
     {
         m_Running = false;
         m_Timer->cancel();
     }
 
-    Daemon::~Daemon()
+    PollingDaemon::~PollingDaemon()
     {
         delete m_Timer;
         m_Timer = nullptr;
     }
 
-    bool Daemon::isRunning() const
+    bool PollingDaemon::isRunning() const
     {
         return m_Running;
     }
@@ -85,7 +85,7 @@ namespace aeacus
         return m_Message;
     }
 
-    void Daemon::wait()
+    void PollingDaemon::wait()
     {
         m_Timer->waitForCancel();
     }

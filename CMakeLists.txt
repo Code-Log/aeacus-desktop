@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.22)
 project(aeacus)
 SET(requiredlibs)
 
-add_executable(aeacusd src/main.cpp src/main.cpp include/util/argument_parser.h include/util/argument.h include/util/cline_argument_parser.h src/util/cline_argument_parser.cpp include/event/message_event.h include/user.h src/user.cpp include/reference.h include/util/http_request.h src/util/http_request.cpp include/event/listener.h include/api/message.h include/util/base64.h src/util/base64.cpp src/api/message.cpp include/api/request.h src/api/request.cpp include/util/timer.h src/util/timer.cpp src/daemon.cpp include/daemon.h include/event/command_event.h src/event/command_event.cpp include/api/command.h src/api/command.cpp src/event/listener.cpp src/event/message_event.cpp include/crypto/crypto.h src/crypto/crypto.cpp include/api/token.h src/util/argument.cpp src/util/cline_argument_parser.cpp src/util/InvalidArgumentException.cpp)
+add_executable(aeacusd src/main.cpp src/main.cpp include/util/argument_parser.h include/util/argument.h include/util/cline_argument_parser.h src/util/cline_argument_parser.cpp include/event/message_event.h include/user.h src/user.cpp include/reference.h include/util/http_request.h src/util/http_request.cpp include/event/listener.h include/api/message.h include/util/base64.h src/util/base64.cpp src/api/message.cpp include/api/request.h src/api/request.cpp include/util/timer.h src/util/timer.cpp src/daemon/daemon.cpp include/daemon/daemon.h include/event/command_event.h src/event/command_event.cpp include/api/command.h src/api/command.cpp src/event/listener.cpp src/event/message_event.cpp include/crypto/crypto.h src/crypto/crypto.cpp include/api/token.h src/util/argument.cpp src/util/cline_argument_parser.cpp src/util/InvalidArgumentException.cpp include/daemon/socket_daemon.h src/daemon/socket_daemon.cpp)
+
+add_library(easywsclient lib/easywsclient/easywsclient.cpp lib/easywsclient/easywsclient.hpp)
 
 find_package(CURL)
 if(CURL_FOUND)
@@ -22,7 +24,9 @@ find_package(OpenSSL REQUIRED)
 find_package(glog REQUIRED)
 
 target_include_directories(aeacusd PUBLIC include)
+target_include_directories(aeacusd PUBLIC lib/easywsclient)
 target_link_libraries(aeacusd curl)
 target_link_libraries(aeacusd ${OPENSSL_LIBRARIES})
 target_link_libraries(aeacusd sodium)
 target_link_libraries(aeacusd glog::glog)
+target_link_libraries(aeacusd easywsclient)

@@ -1,6 +1,8 @@
 #include <curl/curl.h>
 #include <user.h>
-#include <daemon.h>
+#include <daemon/daemon.h>
+#include <daemon/socket_daemon.h>
+#include <reference.h>
 #include <iostream>
 #include <util/cline_argument_parser.h>
 #include <util/InvalidArgumentException.h>
@@ -19,6 +21,10 @@ CommandLineArgumentParser setupParser()
     Argument daemon("d", "daemon", true);
     daemon.addAlias("daemon");
     parser.registerArgument(daemon);
+
+    Argument socket("S", "socket", true);
+    socket.addAlias("socket");
+    parser.registerArgument(socket);
 
     return std::move(parser);
 }
@@ -65,20 +71,41 @@ int main(int argc, const char** argv)
         aeacus::UserContext::get().save();
     }
 
-    if (options.find("daemon") != options.end())
+    if (options.find("daemon") != options.end() || options.find("socket") != options.end())
     {
-        LOG(INFO) << "Daemon called" << std::endl;
         if (!aeacus::UserContext::recall())
         {
             LOG(ERROR) << "Please run setup before running the daemon!" << std::endl;
+            return 0;
         }
+    }
 
-        auto daemon = std::make_shared<aeacus::Daemon>(5000);
+    if (options.find("daemon") != options.end())
+    {
+        LOG(INFO) << "PollingDaemon called" << std::endl;
+
+        auto daemon = std::make_shared<aeacus::PollingDaemon>(5000);
         aeacus::ListenerContext::get().addListener(daemon);
 
         LOG(INFO) << "Starting daemon..." << std::endl;
         daemon->start();
-        LOG(INFO) << "Daemon started" << std::endl;
+        LOG(INFO) << "PollingDaemon started" << std::endl;
+
+        daemon->wait();
+
+        aeacus::UserContext::destroy();
+    }
+
+    if (options.find("socket") != options.end())
+    {
+        LOG(INFO) << "SocketDaemon called" << std::endl;
+
+        auto daemon = std::make_shared<aeacus::SocketDaemon>(AEACUS_SOCKET_URI, 3000);
+        aeacus::ListenerContext::get().addListener(daemon);
+
+        LOG(INFO) << "Starting daemon..." << std::endl;
+        daemon->start();
+        LOG(INFO) << "SocketDaemon started" << std::endl;
 
         daemon->wait();
 

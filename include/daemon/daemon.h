@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <event/listener.h>
-#include <util/timer.h>
+#include "event/listener.h"
+#include "util/timer.h"
 #include <exception>
 
 namespace aeacus
@@ -21,6 +21,13 @@ namespace aeacus
 
     class Daemon : public EventListener
     {
+        virtual void start() = 0;
+        virtual void stop() = 0;
+        virtual void wait() = 0;
+    };
+
+    class PollingDaemon : public Daemon
+    {
     private:
         long m_Delay;
         Timer* m_Timer;
@@ -28,16 +35,16 @@ namespace aeacus
         static bool s_Lock;
 
     public:
-        static Daemon* s_Daemon;
+        static PollingDaemon* s_Daemon;
 
-        explicit Daemon(long pollingDelay);
-        ~Daemon();
+        explicit PollingDaemon(long pollingDelay);
+        ~PollingDaemon();
 
-        void start();
-        void stop();
+        void start() override;
+        void stop() override;
         [[nodiscard]] bool isRunning() const;
         void event(const MessageEvent& event) const override;
-        void wait();
+        void wait() override;
     };
 }
 
